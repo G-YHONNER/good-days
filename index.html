@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Buenos Días ☀️</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,600&family=Poppins:ital,wght@0,500;0,600;0,700;1,600&family=Quicksand:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            outline: none;
+        }
+
+        html, body {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100dvh;
+            overflow: hidden;
+            touch-action: none;
+            overscroll-behavior: none;
+            font-family: 'Poppins', 'Quicksand', sans-serif;
+            background-color: #070913;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .font-title {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(2.6rem, 9vw, 5.5rem);
+            letter-spacing: 0.02em;
+        }
+
+        .font-subtitle {
+            font-family: 'Poppins', 'Quicksand', sans-serif;
+            font-size: clamp(1.1rem, 4.2vw, 1.95rem);
+        }
+
+        /* Clean Floating Text Styles (No Box) */
+        .floating-greeting {
+            transition: opacity 1.2s ease, transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .sun-glow-title {
+            text-shadow: 
+                0 4px 20px rgba(255, 95, 20, 0.8),
+                0 0 40px rgba(255, 215, 130, 0.95),
+                0 2px 6px rgba(0, 0, 0, 0.35);
+        }
+
+        .phrase-shadow {
+            text-shadow: 
+                0 3px 14px rgba(10, 18, 38, 0.85),
+                0 0 28px rgba(255, 145, 45, 0.75);
+        }
+
+        /* Gentle Floating Animation */
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-6px); }
+        }
+
+        .floating {
+            animation: floatSlow 4.5s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="relative w-full h-full flex items-center justify-center">
+
+    <!-- Interactive Sunrise & Ocean Canvas -->
+    <canvas id="sunriseCanvas" class="absolute inset-0 w-full h-full z-0 cursor-pointer"></canvas>
+
+    <!-- Floating Romantic Typography directly on the Sky (No Card/Box, No Buttons) -->
+    <div id="messageContainer" class="fixed top-[10%] sm:top-[11%] left-0 right-0 z-20 px-5 w-full max-w-3xl mx-auto pointer-events-none flex flex-col items-center text-center">
+        <div id="morningGreeting" class="floating-greeting opacity-0 scale-95 -translate-y-4 flex flex-col items-center">
+            
+            <!-- Main Greeting -->
+            <h1 class="font-title font-extrabold text-white sun-glow-title floating leading-tight">
+                Buenos días
+            </h1>
+
+            <!-- Special Romantic Phrase -->
+            <p class="font-subtitle mt-2 sm:mt-3 font-semibold text-amber-50 phrase-shadow tracking-wide max-w-xl leading-snug">
+                <span class="italic">"días porque <span class="font-bold text-rose-200 underline decoration-wavy decoration-amber-300/90">buena</span> ya estás tú"</span> 😉🔥
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('sunriseCanvas');
+        const ctx = canvas.getContext('2d');
+        const morningGreeting = document.getElementById('morningGreeting');
+
+        // Prevent mobile pinch-to-zoom, double-tap zoom, and wheel zoom
+        document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+        document.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) e.preventDefault();
+        }, { passive: false });
+        document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
+
+        let width, height, horizonY;
+        let progress = 0; // 0 = Night/Pre-dawn, 1 = Full Morning Sunrise
+        let targetProgress = 1;
+        let animationSpeed = 0.0028;
+        let cardShown = false;
+        let sunPulse = 0;
+        let sunClickBoost = 0;
+        let waveTime = 0;
+
+        // Entities
+        let stars = [];
+        let clouds = [];
+        let birds = [];
+        let particles = [];
+        let sunPosition = { x: 0, y: 0, radius: 0 };
+        let boat = { x: 0, y: 0, speed: 0.45, dir: 1, bobPhase: 0 };
+
+        // Resize handler
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            horizonY = height * 0.65; // Ocean horizon line
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            initScene();
+        }
+
+        window.addEventListener('resize', resize);
+
+        // Color interpolation helper
+        function lerpColor(c1, c2, t) {
+            t = Math.max(0, Math.min(1, t));
+            const r = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+            const g = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+            const b = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Sky colors across progress (0 to 1)
+        function getSkyColors(p) {
+            const stages = [
+                {
+                    p: 0.0,
+                    top: [7, 11, 28],
+                    mid: [18, 25, 56],
+                    bot: [38, 30, 68]
+                },
+                {
+                    p: 0.35,
+                    top: [35, 32, 82],
+                    mid: [125, 58, 112],
+                    bot: [230, 100, 85]
+                },
+                {
+                    p: 0.7,
+                    top: [55, 115, 195],
+                    mid: [240, 135, 110],
+                    bot: [255, 205, 105]
+                },
+                {
+                    p: 1.0,
+                    top: [48, 145, 230],
+                    mid: [130, 200, 250],
+                    bot: [255, 228, 155]
+                }
+            ];
+
+            let s1 = stages[0], s2 = stages[stages.length - 1];
+            for (let i = 0; i < stages.length - 1; i++) {
+                if (p >= stages[i].p && p <= stages[i + 1].p) {
+                    s1 = stages[i];
+                    s2 = stages[i + 1];
+                    break;
+                }
+            }
+
+            const localT = (p - s1.p) / (s2.p - s1.p || 1);
+            return {
+                top: lerpColor(s1.top, s2.top, localT),
+                mid: lerpColor(s1.mid, s2.mid, localT),
+                bot: lerpColor(s1.bot, s2.bot, localT)
+            };
+        }
+
+        function initScene() {
+            // Create stars for pre-dawn sky
+            stars = [];
+            const starCount = Math.floor((width * horizonY) / 7500);
+            for (let i = 0; i < starCount; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * (horizonY * 0.9),
+                    r: Math.random() * 1.7 + 0.5,
+                    phase: Math.random() * Math.PI * 2,
+                    speed: Math.random() * 0.05 + 0.02
+                });
+            }
+
+            // Create soft drifting clouds
+            clouds = [];
+            const cloudCount = Math.max(4, Math.floor(width / 250));
+            for (let i = 0; i < cloudCount; i++) {
+                clouds.push({
+                    x: Math.random() * width,
+                    y: height * 0.14 + Math.random() * (horizonY * 0.55),
+                    scale: Math.random() * 0.55 + 0.45,
+                    speed: (Math.random() * 0.22 + 0.08) * (Math.random() < 0.5 ? 1 : -1),
+                    puffs: [
+                        { dx: -35, dy: 5, r: 24 },
+                        { dx: -12, dy: -8, r: 32 },
+                        { dx: 18, dy: -4, r: 28 },
+                        { dx: 42, dy: 6, r: 22 },
+                        { dx: 4, dy: 8, r: 26 }
+                    ]
+                });
+            }
+
+            // Create morning seagulls
+            birds = [];
+            for (let i = 0; i < 6; i++) {
+                birds.push({
+                    x: -50 - i * 55,
+                    y: horizonY * 0.52 + (i % 3) * 20,
+                    speedX: 1.0 + Math.random() * 0.45,
+                    speedY: -0.1,
+                    wingPhase: Math.random() * Math.PI * 2,
+                    size: 5 + Math.random() * 3
+                });
+            }
+
+            // Initialize sailboat position on the water
+            boat.x = width * 0.25;
+            boat.y = horizonY + (height - horizonY) * 0.36;
+            boat.speed = Math.max(0.35, width * 0.00045);
+        }
+
+        // Spawn interactive floating hearts or sun sparkles
+        function spawnBurst(x, y, count = 18) {
+            const emojis = ['☀️', '💖', '⛵', '✨', '🌊', '😍', '🔥'];
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+                const speed = Math.random() * 4.5 + 2;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed - 1.5,
+                    size: Math.random() * 14 + 14,
+                    alpha: 1,
+                    decay: Math.random() * 0.012 + 0.008,
+                    emoji: emojis[Math.floor(Math.random() * emojis.length)],
+                    rotation: (Math.random() - 0.5) * 0.4,
+                    rotSpeed: (Math.random() - 0.5) * 0.04
+                });
+            }
+        }
+
+        // Draw Sky Background
+        function drawSky(p) {
+            const colors = getSkyColors(p);
+            const grad = ctx.createLinearGradient(0, 0, 0, horizonY);
+            grad.addColorStop(0, colors.top);
+            grad.addColorStop(0.55, colors.mid);
+            grad.addColorStop(1, colors.bot);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, width, horizonY + 2);
+        }
+
+        // Draw Fading Stars
+        function drawStars(p) {
+            const starOpacity = Math.max(0, 1 - p * 1.9);
+            if (starOpacity <= 0) return;
+
+            ctx.save();
+            stars.forEach(s => {
+                s.phase += s.speed;
+                const twinkle = (Math.sin(s.phase) + 1) * 0.5;
+                ctx.fillStyle = `rgba(255, 255, 255, ${starOpacity * (0.3 + twinkle * 0.7)})`;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            ctx.restore();
+        }
+
+        // Draw Sun Rising out of the Sea
+        function drawSun(p) {
+            sunPulse += 0.03;
+            if (sunClickBoost > 0) sunClickBoost *= 0.93;
+
+            const easeP = 1 - Math.pow(1 - p, 3);
+            const baseRadius = Math.min(width, height) * 0.105 + 14;
+            const radius = baseRadius + Math.sin(sunPulse) * 2.5 + sunClickBoost * 14;
+
+            // Starts submerged below the horizon, rises above the sea
+            const startY = horizonY + radius * 1.35;
+            const targetY = horizonY - radius * 1.35;
+            const currentY = startY - (startY - targetY) * easeP;
+            const centerX = width * 0.5;
+
+            sunPosition = { x: centerX, y: currentY, radius: radius * 1.4 };
+
+            // Clip to above the sea horizon so the sun emerges from inside the water
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, width, horizonY + 1);
+            ctx.clip();
+
+            // Outer atmospheric aura
+            const outerGlowRadius = radius * (3.6 + easeP * 1.8 + sunClickBoost * 0.8);
+            const auraGrad = ctx.createRadialGradient(centerX, currentY, radius * 0.2, centerX, currentY, outerGlowRadius);
+            auraGrad.addColorStop(0, `rgba(255, 245, 190, ${0.8 * easeP})`);
+            auraGrad.addColorStop(0.35, `rgba(255, 175, 75, ${0.48 * easeP})`);
+            auraGrad.addColorStop(0.7, `rgba(255, 110, 95, ${0.2 * easeP})`);
+            auraGrad.addColorStop(1, 'rgba(255, 100, 100, 0)');
+
+            ctx.fillStyle = auraGrad;
+            ctx.beginPath();
+            ctx.arc(centerX, currentY, outerGlowRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Rotating Sunbeams
+            if (p > 0.2) {
+                const rayAlpha = Math.min(1, (p - 0.2) * 1.3) * 0.22;
+                ctx.save();
+                ctx.translate(centerX, currentY);
+                ctx.rotate(sunPulse * 0.1);
+                const rayCount = 16;
+                for (let i = 0; i < rayCount; i++) {
+                    ctx.rotate((Math.PI * 2) / rayCount);
+                    const rayGrad = ctx.createLinearGradient(0, 0, 0, outerGlowRadius * 1.15);
+                    rayGrad.addColorStop(0, `rgba(255, 250, 210, ${rayAlpha})`);
+                    rayGrad.addColorStop(1, 'rgba(255, 250, 210, 0)');
+                    ctx.fillStyle = rayGrad;
+                    ctx.beginPath();
+                    ctx.moveTo(-radius * 0.16, 0);
+                    ctx.lineTo(radius * 0.16, 0);
+                    ctx.lineTo(radius * 0.5, outerGlowRadius * 1.15);
+                    ctx.lineTo(-radius * 0.5, outerGlowRadius * 1.15);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+
+            // Core glowing sun disk
+            const coreGrad = ctx.createRadialGradient(centerX, currentY - radius * 0.15, radius * 0.1, centerX, currentY, radius);
+            coreGrad.addColorStop(0, '#ffffff');
+            coreGrad.addColorStop(0.55, '#fff4ad');
+            coreGrad.addColorStop(0.9, '#ffaa2b');
+            coreGrad.addColorStop(1, 'rgba(255, 125, 20, 0.95)');
+
+            ctx.fillStyle = coreGrad;
+            ctx.shadowColor = '#ff9922';
+            ctx.shadowBlur = 40;
+            ctx.beginPath();
+            ctx.arc(centerX, currentY, radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Draw Floating Clouds
+        function drawClouds(p) {
+            const cColor = lerpColor([45, 40, 80], [255, 248, 240], Math.min(1, p * 1.25));
+            const alpha = 0.22 + p * 0.42;
+
+            ctx.save();
+            clouds.forEach(c => {
+                c.x += c.speed;
+                if (c.x > width + 100) c.x = -100;
+                if (c.x < -100) c.x = width + 100;
+
+                ctx.save();
+                ctx.translate(c.x, c.y);
+                ctx.scale(c.scale, c.scale);
+                ctx.fillStyle = cColor.replace('rgb', 'rgba').replace(')', `, ${alpha})`);
+
+                c.puffs.forEach(puff => {
+                    ctx.beginPath();
+                    ctx.arc(puff.dx, puff.dy, puff.r, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.restore();
+            });
+            ctx.restore();
+        }
+
+        // Draw Flying Seagulls
+        function drawBirds(p) {
+            if (p < 0.35) return;
+            const birdAlpha = Math.min(0.75, (p - 0.35) * 1.4);
+            ctx.save();
+            ctx.strokeStyle = `rgba(55, 35, 55, ${birdAlpha})`;
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+
+            birds.forEach(b => {
+                b.x += b.speedX;
+                b.y += b.speedY + Math.sin(b.wingPhase * 0.2) * 0.15;
+                b.wingPhase += 0.17;
+
+                if (b.x > width + 60) {
+                    b.x = -60;
+                    b.y = horizonY * 0.35 + Math.random() * (horizonY * 0.4);
+                }
+
+                const wingY = Math.sin(b.wingPhase) * b.size * 0.7;
+
+                ctx.beginPath();
+                ctx.moveTo(b.x - b.size, b.y + wingY);
+                ctx.quadraticCurveTo(b.x - b.size * 0.4, b.y - b.size * 0.5, b.x, b.y);
+                ctx.quadraticCurveTo(b.x + b.size * 0.4, b.y - b.size * 0.5, b.x + b.size, b.y + wingY);
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+
+        // Draw Animated Sea, Waves & Shimmering Sun Reflection
+        function drawSea(p) {
+            waveTime += 0.025;
+            const seaHeight = height - horizonY;
+
+            // Base ocean gradient transitioning from night navy to turquoise/golden morning sea
+            const seaTop = lerpColor([12, 20, 48], [28, 125, 175], p);
+            const seaMid = lerpColor([8, 14, 36], [16, 85, 138], p);
+            const seaBot = lerpColor([4, 8, 22], [10, 48, 90], p);
+
+            const seaGrad = ctx.createLinearGradient(0, horizonY, 0, height);
+            seaGrad.addColorStop(0, seaTop);
+            seaGrad.addColorStop(0.45, seaMid);
+            seaGrad.addColorStop(1, seaBot);
+
+            ctx.fillStyle = seaGrad;
+            ctx.fillRect(0, horizonY, width, seaHeight);
+
+            // Warm horizon glow on the water
+            const glowAlpha = Math.min(0.65, p * 0.7);
+            const horizonGlow = ctx.createRadialGradient(
+                width * 0.5, horizonY, 10,
+                width * 0.5, horizonY, width * 0.55
+            );
+            horizonGlow.addColorStop(0, `rgba(255, 220, 130, ${glowAlpha})`);
+            horizonGlow.addColorStop(0.5, `rgba(255, 140, 80, ${glowAlpha * 0.45})`);
+            horizonGlow.addColorStop(1, 'rgba(255, 120, 80, 0)');
+            ctx.fillStyle = horizonGlow;
+            ctx.fillRect(0, horizonY, width, seaHeight);
+
+            // Rolling wave bands
+            const waveLayers = 5;
+            for (let l = 0; l < waveLayers; l++) {
+                const layerRatio = (l + 1) / (waveLayers + 1);
+                const baseWaveY = horizonY + Math.pow(layerRatio, 1.35) * seaHeight;
+                const amp = 2.5 + l * 2.2;
+                const freq = 0.018 - l * 0.0025;
+                const speed = waveTime * (1.1 + l * 0.25) * (l % 2 === 0 ? 1 : -1);
+
+                ctx.beginPath();
+                ctx.moveTo(0, height);
+                for (let x = 0; x <= width; x += 20) {
+                    const y = baseWaveY + Math.sin(x * freq + speed) * amp + Math.cos(x * freq * 0.6 - speed) * (amp * 0.4);
+                    ctx.lineTo(x, y);
+                }
+                ctx.lineTo(width, height);
+                ctx.closePath();
+
+                const waveAlpha = 0.14 + (l / waveLayers) * 0.12;
+                ctx.fillStyle = `rgba(8, 35, 70, ${waveAlpha})`;
+                ctx.fill();
+            }
+
+            // Shimmering Golden Sun Path Reflection on the Water
+            if (p > 0.05) {
+                ctx.save();
+                const shimmerStrips = 34;
+                const baseWidth = sunPosition.radius * (0.65 + p * 0.5);
+
+                for (let i = 0; i < shimmerStrips; i++) {
+                    const ratio = i / shimmerStrips;
+                    const y = horizonY + 4 + Math.pow(ratio, 1.55) * (seaHeight - 12);
+                    const spread = baseWidth * (0.25 + ratio * 1.65);
+                    const waveOffset = Math.sin(waveTime * 2.2 + i * 0.7) * (4 + ratio * 18);
+                    const stripWidth = spread * (0.55 + 0.45 * Math.sin(waveTime * 1.7 + i * 1.3));
+                    const stripHeight = 2 + ratio * 4.5;
+
+                    const alpha = (1 - ratio * 0.65) * Math.min(0.85, p * 1.1);
+                    ctx.fillStyle = i % 3 === 0
+                        ? `rgba(255, 252, 215, ${alpha})`
+                        : `rgba(255, 195, 95, ${alpha * 0.85})`;
+
+                    ctx.beginPath();
+                    ctx.roundRect(
+                        width * 0.5 - stripWidth * 0.5 + waveOffset,
+                        y,
+                        stripWidth,
+                        stripHeight,
+                        stripHeight * 0.5
+                    );
+                    ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        // Draw Romantic Sailboat Bobbing on the Sea
+        function drawSailboat(p) {
+            boat.x += boat.speed * boat.dir;
+            if (boat.x > width * 0.82) boat.dir = -1;
+            if (boat.x < width * 0.18) boat.dir = 1;
+
+            boat.bobPhase += 0.045;
+            const bobY = Math.sin(boat.bobPhase) * 3.5;
+            const tilt = Math.sin(boat.bobPhase * 0.8) * 0.045;
+
+            const scale = Math.min(1.15, Math.max(0.68, Math.min(width, height) / 620));
+            const bx = boat.x;
+            const by = boat.y + bobY;
+
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.rotate(tilt);
+            ctx.scale(scale * boat.dir, scale); // Flip direction smoothly
+
+            // Water wake / reflection beneath boat
+            ctx.fillStyle = `rgba(255, 220, 140, ${0.18 + p * 0.25})`;
+            ctx.beginPath();
+            ctx.ellipse(0, 12, 48, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Boat Hull
+            const hullColor = lerpColor([18, 22, 42], [95, 48, 35], p);
+            const rimLight = lerpColor([60, 70, 110], [255, 215, 125], p);
+
+            ctx.fillStyle = hullColor;
+            ctx.strokeStyle = rimLight;
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(-42, 0);
+            ctx.lineTo(46, -2);
+            ctx.quadraticCurveTo(36, 14, 22, 14);
+            ctx.lineTo(-26, 14);
+            ctx.quadraticCurveTo(-36, 12, -42, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Gold stripe along hull
+            ctx.strokeStyle = `rgba(255, 210, 115, ${0.4 + p * 0.5})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-36, 5);
+            ctx.lineTo(38, 4);
+            ctx.stroke();
+
+            // Mast
+            ctx.strokeStyle = lerpColor([25, 30, 50], [70, 40, 30], p);
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(2, 0);
+            ctx.lineTo(2, -78);
+            ctx.stroke();
+
+            // Main Sail (illuminated by warm morning light)
+            const sailGrad = ctx.createLinearGradient(-5, -75, 38, -10);
+            sailGrad.addColorStop(0, lerpColor([50, 55, 95], [255, 250, 238], p));
+            sailGrad.addColorStop(1, lerpColor([85, 65, 110], [255, 195, 140], p));
+
+            ctx.fillStyle = sailGrad;
+            ctx.beginPath();
+            ctx.moveTo(5, -74);
+            ctx.quadraticCurveTo(42, -42, 34, -8);
+            ctx.quadraticCurveTo(18, -10, 5, -8);
+            ctx.closePath();
+            ctx.fill();
+
+            // Front Jib Sail
+            const jibGrad = ctx.createLinearGradient(-32, -55, 0, -10);
+            jibGrad.addColorStop(0, lerpColor([65, 60, 105], [255, 235, 200], p));
+            jibGrad.addColorStop(1, lerpColor([45, 45, 85], [255, 175, 130], p));
+
+            ctx.fillStyle = jibGrad;
+            ctx.beginPath();
+            ctx.moveTo(-1, -68);
+            ctx.quadraticCurveTo(-28, -36, -34, -8);
+            ctx.quadraticCurveTo(-15, -10, -1, -8);
+            ctx.closePath();
+            ctx.fill();
+
+            // Little fluttering pennant flag on top of mast
+            const flagWave = Math.sin(boat.bobPhase * 2.5) * 3;
+            ctx.fillStyle = '#ff5e7e';
+            ctx.beginPath();
+            ctx.moveTo(2, -78);
+            ctx.lineTo(-14, -74 + flagWave);
+            ctx.lineTo(2, -70);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+
+        // Draw interactive particles & floating morning sparkles
+        function drawParticles(p) {
+            // Ambient sparkles rising from the sunlit sea
+            if (p > 0.55 && Math.random() < 0.2) {
+                particles.push({
+                    x: width * 0.25 + Math.random() * (width * 0.5),
+                    y: horizonY + Math.random() * (height - horizonY),
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: -Math.random() * 1.1 - 0.4,
+                    size: Math.random() * 2.8 + 1.2,
+                    alpha: 0.85,
+                    decay: 0.007,
+                    emoji: null
+                });
+            }
+
+            ctx.save();
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const pt = particles[i];
+                pt.x += pt.vx;
+                pt.y += pt.vy;
+                pt.alpha -= pt.decay;
+
+                if (pt.alpha <= 0) {
+                    particles.splice(i, 1);
+                    continue;
+                }
+
+                ctx.globalAlpha = Math.max(0, pt.alpha);
+                if (pt.emoji) {
+                    pt.rotation += pt.rotSpeed;
+                    ctx.save();
+                    ctx.translate(pt.x, pt.y);
+                    ctx.rotate(pt.rotation);
+                    ctx.font = `${pt.size}px serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(pt.emoji, 0, 0);
+                    ctx.restore();
+                } else {
+                    ctx.fillStyle = '#fff7c2';
+                    ctx.shadowColor = '#ffae00';
+                    ctx.shadowBlur = 8;
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            ctx.restore();
+        }
+
+        // Reveal the floating greeting text smoothly once sunrise lights the sky
+        function updateUI(p) {
+            if (p >= 0.52 && !cardShown) {
+                cardShown = true;
+                morningGreeting.classList.remove('opacity-0', 'scale-95', '-translate-y-4');
+                morningGreeting.classList.add('opacity-100', 'scale-100', 'translate-y-0');
+                spawnBurst(width * 0.5, horizonY - 40, 14);
+            }
+        }
+
+        // Main Animation Loop
+        function animate() {
+            if (progress < targetProgress) {
+                progress = Math.min(targetProgress, progress + animationSpeed);
+            }
+
+            ctx.clearRect(0, 0, width, height);
+
+            drawSky(progress);
+            drawStars(progress);
+            drawSun(progress);
+            drawClouds(progress);
+            drawBirds(progress);
+            drawSea(progress);
+            drawSailboat(progress);
+            drawParticles(progress);
+            updateUI(progress);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Clicking or tapping on the sky, sun, sea, or boat
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            const x = e.clientX;
+            const y = e.clientY;
+
+            // Speed up sunrise if still rising
+            if (progress < 0.75) {
+                progress = Math.min(1, progress + 0.18);
+            }
+
+            const distSun = Math.hypot(x - sunPosition.x, y - sunPosition.y);
+            const distBoat = Math.hypot(x - boat.x, y - boat.y);
+
+            if (distBoat < 65) {
+                // Clicked the sailboat
+                boat.dir *= -1;
+                spawnBurst(boat.x, boat.y - 30, 18);
+            } else if (distSun < sunPosition.radius * 1.4) {
+                // Clicked the sun
+                sunClickBoost = 1.6;
+                spawnBurst(x, y, 20);
+            } else {
+                spawnBurst(x, y, 12);
+            }
+        }, { passive: false });
+
+        // Start on load
+        window.onload = function () {
+            resize();
+            animate();
+        };
+    </script>
+</body>
+</html>
